@@ -1,100 +1,86 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { demoScenario, farmLocations, getFarmByName, riskBadge } from "@/lib/demo";
 
-const presetLocations = {
-  "Baguio, Benguet": { lat: 16.4023, lng: 120.596 },
-  "Santiago, Isabela": { lat: 16.6885, lng: 121.5498 },
-  "Meycauayan, Bulacan": { lat: 14.7369, lng: 120.9604 },
-  "Taguig, Metro Manila": { lat: 14.5176, lng: 121.0509 },
-  "Davao City, Davao del Sur": { lat: 7.1907, lng: 125.4553 }
-};
-
-const defaultForm = {
-  crop_type: "tomato",
-  volume_kg: 1200,
-  location: "Taguig, Metro Manila",
-  hours_since_harvest: 4
-};
-
-function riskStyles(level) {
-  if (level === "LOW") {
-    return "bg-emerald-100 text-emerald-700 border-emerald-200";
-  }
-  if (level === "MEDIUM") {
-    return "bg-amber-100 text-amber-700 border-amber-200";
-  }
-  return "bg-rose-100 text-rose-700 border-rose-200";
+function SectionCard({ title, subtitle, children, className = "" }) {
+  return (
+    <article
+      className={`rounded-2xl border border-[#2E5E3E]/15 bg-white p-6 shadow-[0_8px_24px_rgba(46,94,62,0.08)] ${className}`}
+    >
+      <h2 className="text-lg font-semibold text-[#2E5E3E]">{title}</h2>
+      {subtitle ? <p className="mt-1 text-sm text-[#5E6B60]">{subtitle}</p> : null}
+      <div className="mt-5">{children}</div>
+    </article>
+  );
 }
 
 export default function Page() {
-  const [formData, setFormData] = useState(defaultForm);
+  const [formData, setFormData] = useState(demoScenario);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
 
-  const locationOptions = useMemo(() => Object.keys(presetLocations), []);
+  const locationOptions = useMemo(() => farmLocations.map((farm) => farm.name), []);
 
-  async function onSubmit(event) {
-    event.preventDefault();
+  async function runDecision(payload) {
     setLoading(true);
     setError("");
-
-    const point = presetLocations[formData.location];
+    const selectedFarm = getFarmByName(payload.location);
 
     try {
       const response = await fetch("/api/match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...formData,
-          lat: point.lat,
-          lng: point.lng
+          ...payload,
+          lat: selectedFarm.lat,
+          lng: selectedFarm.lng
         })
       });
-
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Request failed.");
+        throw new Error(data.error ?? "Unable to run decision.");
       }
       setResult(data);
-    } catch (submitError) {
-      setError(submitError.message);
+    } catch (decisionError) {
+      setError(decisionError.message);
       setResult(null);
     } finally {
       setLoading(false);
     }
   }
 
-  const mapQuery = result
-    ? `${result.supply.lat},${result.supply.lng}|${result.selectedFacility.company}`
-    : "";
+  useEffect(() => {
+    runDecision(demoScenario);
+  }, []);
+
+  async function onSubmit(event) {
+    event.preventDefault();
+    runDecision(formData);
+  }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl px-6 py-10 md:px-10">
-      <header className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">
-          ColdLink PH MVP
+    <main className="space-y-6">
+      <section className="rounded-2xl border border-[#2E5E3E]/15 bg-gradient-to-r from-[#2E5E3E] to-[#3A6F4C] p-6 text-white shadow-[0_10px_24px_rgba(46,94,62,0.2)]">
+        <p className="text-sm tracking-wide text-[#F2C14E]">System Banner</p>
+        <h2 className="mt-1 text-2xl font-semibold">ColdLink Command Center</h2>
+        <p className="mt-2 text-sm md:text-base">
+          ColdLink optimizes harvest routing in real-time to reduce spoilage risk.
         </p>
-        <h1 className="mt-2 text-3xl font-bold text-slate-900 md:text-4xl">
-          Cold Storage Decision Dashboard
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm text-slate-600 md:text-base">
-          Evaluate spoilage risk and assign the most suitable nearby cold storage in one
-          decision flow.
-        </p>
-      </header>
+      </section>
 
       <section className="grid gap-6 lg:grid-cols-12">
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-4">
-          <h2 className="text-lg font-semibold text-slate-900">Supply Input</h2>
-          <p className="mt-1 text-sm text-slate-500">Enter shipment details to run matching.</p>
-
-          <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+        <SectionCard
+          title="Active Harvest Intake"
+          subtitle="Pre-filled scenario keeps the decision flow immediate."
+          className="lg:col-span-4"
+        >
+          <form className="space-y-4" onSubmit={onSubmit}>
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Crop Type</span>
+              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">Crop Type</span>
               <select
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-200 transition focus:ring"
+                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
                 value={formData.crop_type}
                 onChange={(e) => setFormData((prev) => ({ ...prev, crop_type: e.target.value }))}
               >
@@ -107,11 +93,11 @@ export default function Page() {
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Volume (kg)</span>
+              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">Volume (kg)</span>
               <input
                 type="number"
                 min={100}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-200 transition focus:ring"
+                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
                 value={formData.volume_kg}
                 onChange={(e) =>
                   setFormData((prev) => ({ ...prev, volume_kg: Number(e.target.value) }))
@@ -120,9 +106,9 @@ export default function Page() {
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">Location</span>
+              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">Location</span>
               <select
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-200 transition focus:ring"
+                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
                 value={formData.location}
                 onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
               >
@@ -135,13 +121,13 @@ export default function Page() {
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-700">
+              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">
                 Hours Since Harvest
               </span>
               <input
                 type="number"
                 min={0}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none ring-sky-200 transition focus:ring"
+                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
                 value={formData.hours_since_harvest}
                 onChange={(e) =>
                   setFormData((prev) => ({
@@ -155,131 +141,68 @@ export default function Page() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              className="w-full rounded-xl bg-[#2E5E3E] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
             >
-              {loading ? "Computing..." : "Run Decision"}
+              {loading ? "Evaluating..." : "Re-run Decision"}
             </button>
           </form>
-
-          {error ? (
-            <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              {error}
-            </p>
-          ) : null}
-        </article>
+        </SectionCard>
 
         <div className="space-y-6 lg:col-span-8">
-          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Decision Panel</h2>
-            {!result ? (
-              <p className="mt-4 text-sm text-slate-500">
-                Submit supply details to see assigned facility, ETA, and spoilage risk.
+          <SectionCard
+            title="Decision Output"
+            subtitle="Problem -> assignment -> operational narrative."
+          >
+            {error ? (
+              <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {error}
               </p>
+            ) : null}
+            {!result ? (
+              <p className="text-sm text-[#5E6B60]">Running the default scenario...</p>
             ) : (
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Supply Details</p>
-                  <p className="mt-2 text-sm text-slate-700">
-                    <strong>Crop:</strong> {result.supply.crop_type}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-[#2E5E3E]/15 bg-[#F7F5EF] p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8B5E3C]">
+                    Spoilage Exposure Index
                   </p>
-                  <p className="text-sm text-slate-700">
-                    <strong>Volume:</strong> {result.supply.volume_kg} kg
-                  </p>
-                  <p className="text-sm text-slate-700">
-                    <strong>Location:</strong> {result.supply.location}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Assigned Cold Storage</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">
-                    {result.selectedFacility.company}
-                  </p>
-                  <p className="text-sm text-slate-600">{result.selectedFacility.address}</p>
-                  <p className="mt-2 text-sm text-slate-700">
-                    <strong>Distance:</strong> {result.estimatedDistanceKm} km
-                  </p>
-                  <p className="text-sm text-slate-700">
-                    <strong>ETA:</strong> {result.etaHours} hrs
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 p-4 md:col-span-2">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Risk Level</p>
-                  <div className="mt-2 flex items-center gap-3">
+                  <div className="mt-3 flex items-center gap-3">
                     <span
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${riskStyles(result.spoilageRisk.level)}`}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${riskBadge(result.spoilageRisk.level)}`}
                     >
                       {result.spoilageRisk.level}
                     </span>
-                    <p className="text-sm text-slate-700">Score: {result.spoilageRisk.score}/100</p>
+                    <span className="text-2xl font-semibold text-[#2E5E3E]">
+                      {result.spoilageRisk.score}/100
+                    </span>
                   </div>
-                  <p className="mt-3 text-sm text-slate-700">{result.recommendation}</p>
-                </div>
-              </div>
-            )}
-          </article>
-
-          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Risk Simulation Panel</h2>
-            {!result ? (
-              <p className="mt-4 text-sm text-slate-500">
-                Run a decision to compare immediate transport versus 3-hour delay.
-              </p>
-            ) : (
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                  <p className="text-xs uppercase tracking-wide text-emerald-700">If transported now</p>
-                  <p className="mt-2 text-2xl font-bold text-emerald-700">
-                    {result.spoilageRisk.level}
+                  <p className="mt-2 text-sm text-[#5E6B60]">
+                    Based on crop sensitivity, post-harvest age, load, and travel distance.
                   </p>
-                  <p className="text-sm text-emerald-800">Risk score: {result.spoilageRisk.score}/100</p>
                 </div>
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
-                  <p className="text-xs uppercase tracking-wide text-rose-700">
-                    If delayed by +3 hours
-                  </p>
-                  <p className="mt-2 text-2xl font-bold text-rose-700">{result.delayedRisk.level}</p>
-                  <p className="text-sm text-rose-800">Risk score: {result.delayedRisk.score}/100</p>
-                </div>
-              </div>
-            )}
-          </article>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Map Visualization</h2>
-            {!result ? (
-              <p className="mt-4 text-sm text-slate-500">
-                A simple map route view appears after matching a facility.
-              </p>
-            ) : (
-              <div className="mt-4 space-y-3">
-                <iframe
-                  title="ColdLink PH route map"
-                  src={`https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`}
-                  className="h-64 w-full rounded-xl border border-slate-200"
-                />
-                <div className="flex flex-wrap gap-3 text-sm">
-                  <a
-                    href={`https://www.google.com/maps?q=${result.supply.lat},${result.supply.lng}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                  >
-                    Open Farm Location
-                  </a>
-                  <a
-                    href={`https://www.google.com/maps?q=${encodeURIComponent(result.selectedFacility.company)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                  >
-                    Open Cold Storage
-                  </a>
+                <div className="rounded-xl border border-[#2E5E3E]/15 bg-[#F7F5EF] p-4">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8B5E3C]">
+                    Cold Storage Assignment
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-[#2E5E3E]">
+                    {result.selectedFacility.company}
+                  </p>
+                  <p className="mt-1 text-sm text-[#5E6B60]">{result.selectedFacility.address}</p>
+                  <p className="mt-2 text-sm text-[#2E5E3E]">
+                    Distance: {result.estimatedDistanceKm} km | ETA: {result.etaHours} hrs
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-[#2E5E3E]/15 bg-white p-4 md:col-span-2">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[#8B5E3C]">
+                    Recommendation Narrative
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-[#2E5E3E]">{result.recommendation}</p>
                 </div>
               </div>
             )}
-          </article>
+          </SectionCard>
         </div>
       </section>
     </main>

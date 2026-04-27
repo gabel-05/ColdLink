@@ -74,7 +74,9 @@ export async function POST(request) {
         id: best.id,
         company: best.company,
         region: best.region,
-        address: best.address
+        address: best.address,
+        lat: best.lat,
+        lng: best.lng
       },
       estimatedDistanceKm: distanceKm,
       etaHours,
