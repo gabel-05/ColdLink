@@ -1,210 +1,259 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { demoScenario, farmLocations, getFarmByName, riskBadge } from "@/lib/demo";
+import {
+  harvestIntakeFeed,
+  urgencyStyles
+} from "@/data/operations";
+import { riskBadge } from "@/lib/demo";
 
-function SectionCard({ title, subtitle, children, className = "" }) {
+function Panel({ title, subtitle, children, className = "" }) {
   return (
-    <article
-      className={`rounded-2xl border border-[#2E5E3E]/15 bg-white p-6 shadow-[0_8px_24px_rgba(46,94,62,0.08)] ${className}`}
+    <section
+      className={`rounded-2xl border border-[#2E5E3E]/12 bg-white p-5 shadow-[0_8px_28px_rgba(46,94,62,0.07)] ${className}`}
     >
-      <h2 className="text-lg font-semibold text-[#2E5E3E]">{title}</h2>
+      <h2 className="text-base font-semibold text-[#2E5E3E]">{title}</h2>
       {subtitle ? <p className="mt-1 text-sm text-[#5E6B60]">{subtitle}</p> : null}
-      <div className="mt-5">{children}</div>
-    </article>
+      <div className="mt-4">{children}</div>
+    </section>
   );
 }
 
-export default function Page() {
-  const [formData, setFormData] = useState(demoScenario);
-  const [loading, setLoading] = useState(false);
+async function fetchMatch(row) {
+  const res = await fetch("/api/match", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      crop_type: row.crop_type,
+      volume_kg: row.volume_kg,
+      location: row.location,
+      hours_since_harvest: row.hours_since_harvest,
+      lat: row.lat,
+      lng: row.lng
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? "Match failed");
+  return { harvestId: row.id, ...data };
+}
+
+export default function CommandCenterPage() {
+  const [selectedId, setSelectedId] = useState(harvestIntakeFeed[0].id);
+  const [matches, setMatches] = useState({});
+  const [loadingBoard, setLoadingBoard] = useState(true);
   const [error, setError] = useState("");
-  const [result, setResult] = useState(null);
 
-  const locationOptions = useMemo(() => farmLocations.map((farm) => farm.name), []);
+  const selectedRow = useMemo(
+    () => harvestIntakeFeed.find((r) => r.id === selectedId) ?? harvestIntakeFeed[0],
+    [selectedId]
+  );
 
-  async function runDecision(payload) {
-    setLoading(true);
-    setError("");
-    const selectedFarm = getFarmByName(payload.location);
+  const selectedMatch = matches[selectedId];
 
-    try {
-      const response = await fetch("/api/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...payload,
-          lat: selectedFarm.lat,
-          lng: selectedFarm.lng
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "Unable to run decision.");
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAll() {
+      setLoadingBoard(true);
+      setError("");
+      try {
+        const results = await Promise.all(harvestIntakeFeed.map((row) => fetchMatch(row)));
+        if (cancelled) return;
+        const map = {};
+        results.forEach((r) => {
+          map[r.harvestId] = r;
+        });
+        setMatches(map);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoadingBoard(false);
       }
-      setResult(data);
-    } catch (decisionError) {
-      setError(decisionError.message);
-      setResult(null);
-    } finally {
-      setLoading(false);
+    }
+    loadAll();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function formatTime(iso) {
+    try {
+      return new Date(iso).toLocaleString("en-PH", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Manila"
+      });
+    } catch {
+      return iso;
     }
   }
 
-  useEffect(() => {
-    runDecision(demoScenario);
-  }, []);
-
-  async function onSubmit(event) {
-    event.preventDefault();
-    runDecision(formData);
-  }
-
   return (
-    <main className="space-y-6">
-      <section className="rounded-2xl border border-[#2E5E3E]/15 bg-gradient-to-r from-[#2E5E3E] to-[#3A6F4C] p-6 text-white shadow-[0_10px_24px_rgba(46,94,62,0.2)]">
-        <p className="text-sm tracking-wide text-[#F2C14E]">System Banner</p>
-        <h2 className="mt-1 text-2xl font-semibold">ColdLink Command Center</h2>
-        <p className="mt-2 text-sm md:text-base">
-          ColdLink optimizes harvest routing in real-time to reduce spoilage risk.
+    <div className="mx-auto max-w-7xl space-y-6">
+      <section className="rounded-2xl border border-[#2E5E3E]/15 bg-gradient-to-r from-[#2E5E3E] to-[#3d7250] p-6 text-white shadow-[0_12px_32px_rgba(46,94,62,0.22)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#F2C14E]">
+          System status
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold md:text-3xl">LGU / Co-op Control Tower</h1>
+        <p className="mt-3 max-w-3xl text-sm leading-relaxed text-white/90 md:text-base">
+          ColdLink is actively optimizing cold chain allocation across the region.
         </p>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-12">
-        <SectionCard
-          title="Active Harvest Intake"
-          subtitle="Pre-filled scenario keeps the decision flow immediate."
-          className="lg:col-span-4"
-        >
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">Crop Type</span>
-              <select
-                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
-                value={formData.crop_type}
-                onChange={(e) => setFormData((prev) => ({ ...prev, crop_type: e.target.value }))}
-              >
-                <option value="tomato">Tomato</option>
-                <option value="strawberry">Strawberry</option>
-                <option value="lettuce">Lettuce</option>
-                <option value="mango">Mango</option>
-                <option value="banana">Banana</option>
-              </select>
-            </label>
+      <div className="grid gap-6 xl:grid-cols-12">
+        <div className="space-y-6 xl:col-span-5">
+          <Panel
+            title="Harvest Intake Feed"
+            subtitle="Incoming registrations from cooperatives and field agents (simulated)."
+          >
+            {loadingBoard ? (
+              <p className="text-sm text-[#5E6B60]">Syncing intake records…</p>
+            ) : (
+              <ul className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                {harvestIntakeFeed.map((row) => {
+                  const m = matches[row.id];
+                  const active = row.id === selectedId;
+                  return (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(row.id)}
+                        className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                          active
+                            ? "border-[#2E5E3E] bg-[#2E5E3E]/8 shadow-sm"
+                            : "border-[#2E5E3E]/10 bg-[#F7F5EF] hover:border-[#2E5E3E]/25"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold capitalize text-[#2E5E3E]">
+                              {row.crop_type} · {row.volume_kg.toLocaleString()} kg
+                            </p>
+                            <p className="mt-0.5 text-xs text-[#5E6B60]">{row.location}</p>
+                            <p className="mt-1 text-[11px] text-[#8B5E3C]">{formatTime(row.reportedAt)}</p>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${urgencyStyles[row.urgency]}`}
+                          >
+                            {row.urgency}
+                          </span>
+                        </div>
+                        {m ? (
+                          <p className="mt-2 text-[11px] text-[#5E6B60]">
+                            Risk:{" "}
+                            <span className="font-medium text-[#2E5E3E]">{m.spoilageRisk.level}</span>{" "}
+                            ({m.spoilageRisk.score}) · {m.selectedFacility.company.slice(0, 36)}…
+                          </p>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Panel>
+        </div>
 
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">Volume (kg)</span>
-              <input
-                type="number"
-                min={100}
-                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
-                value={formData.volume_kg}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, volume_kg: Number(e.target.value) }))
-                }
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">Location</span>
-              <select
-                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
-                value={formData.location}
-                onChange={(e) => setFormData((prev) => ({ ...prev, location: e.target.value }))}
-              >
-                {locationOptions.map((location) => (
-                  <option key={location} value={location}>
-                    {location}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-[#2E5E3E]">
-                Hours Since Harvest
-              </span>
-              <input
-                type="number"
-                min={0}
-                className="w-full rounded-xl border border-[#2E5E3E]/25 bg-white px-3 py-2 text-sm outline-none ring-[#F2C14E]/40 transition focus:ring"
-                value={formData.hours_since_harvest}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    hours_since_harvest: Number(e.target.value)
-                  }))
-                }
-              />
-            </label>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-[#2E5E3E] px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-60"
-            >
-              {loading ? "Evaluating..." : "Re-run Decision"}
-            </button>
-          </form>
-        </SectionCard>
-
-        <div className="space-y-6 lg:col-span-8">
-          <SectionCard
-            title="Decision Output"
-            subtitle="Problem -> assignment -> operational narrative."
+        <div className="space-y-6 xl:col-span-7">
+          <Panel
+            title="Allocation Engine"
+            subtitle="Nearest accredited cold storage, ETA, and operational recommendation for the selected intake."
           >
             {error ? (
-              <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                {error}
-              </p>
+              <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>
             ) : null}
-            {!result ? (
-              <p className="text-sm text-[#5E6B60]">Running the default scenario...</p>
+            {!selectedMatch ? (
+              <p className="text-sm text-[#5E6B60]">Select an intake record.</p>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-[#2E5E3E]/15 bg-[#F7F5EF] p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-[#8B5E3C]">
-                    Spoilage Exposure Index
+                <div className="rounded-xl border border-[#2E5E3E]/12 bg-[#F7F5EF] p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#8B5E3C]">
+                    Selected harvest
                   </p>
-                  <div className="mt-3 flex items-center gap-3">
-                    <span
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${riskBadge(result.spoilageRisk.level)}`}
-                    >
-                      {result.spoilageRisk.level}
-                    </span>
-                    <span className="text-2xl font-semibold text-[#2E5E3E]">
-                      {result.spoilageRisk.score}/100
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm text-[#5E6B60]">
-                    Based on crop sensitivity, post-harvest age, load, and travel distance.
+                  <p className="mt-2 text-sm font-semibold capitalize text-[#2E5E3E]">
+                    {selectedRow.crop_type} · {selectedRow.volume_kg.toLocaleString()} kg
+                  </p>
+                  <p className="text-sm text-[#5E6B60]">{selectedRow.location}</p>
+                  <p className="mt-2 text-xs text-[#5E6B60]">
+                    {selectedRow.id} · {selectedRow.cooperative}
                   </p>
                 </div>
-
-                <div className="rounded-xl border border-[#2E5E3E]/15 bg-[#F7F5EF] p-4">
-                  <p className="text-xs uppercase tracking-[0.14em] text-[#8B5E3C]">
-                    Cold Storage Assignment
+                <div className="rounded-xl border border-[#2E5E3E]/12 bg-[#F7F5EF] p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#8B5E3C]">
+                    Assigned cold storage
                   </p>
-                  <p className="mt-3 text-sm font-semibold text-[#2E5E3E]">
-                    {result.selectedFacility.company}
+                  <p className="mt-2 text-sm font-semibold text-[#2E5E3E]">
+                    {selectedMatch.selectedFacility.company}
                   </p>
-                  <p className="mt-1 text-sm text-[#5E6B60]">{result.selectedFacility.address}</p>
-                  <p className="mt-2 text-sm text-[#2E5E3E]">
-                    Distance: {result.estimatedDistanceKm} km | ETA: {result.etaHours} hrs
+                  <p className="mt-1 text-xs text-[#5E6B60]">{selectedMatch.selectedFacility.address}</p>
+                  <p className="mt-3 text-sm text-[#2E5E3E]">
+                    <strong>{selectedMatch.estimatedDistanceKm} km</strong>
+                    <span className="mx-2 text-[#8B5E3C]">·</span>
+                    ETA <strong>{selectedMatch.etaHours} hrs</strong>
                   </p>
                 </div>
-
-                <div className="rounded-xl border border-[#2E5E3E]/15 bg-white p-4 md:col-span-2">
-                  <p className="text-xs uppercase tracking-[0.14em] text-[#8B5E3C]">
-                    Recommendation Narrative
+                <div className="rounded-xl border border-[#F2C14E]/35 bg-white p-4 md:col-span-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#8B5E3C]">
+                    Recommendation
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-[#2E5E3E]">{result.recommendation}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-[#2E5E3E]">
+                    {selectedMatch.recommendation}
+                  </p>
                 </div>
               </div>
             )}
-          </SectionCard>
+          </Panel>
+
+          <Panel title="Risk Monitoring Board" subtitle="Exposure index across active intake items.">
+            {loadingBoard ? (
+              <p className="text-sm text-[#5E6B60]">Building risk snapshot…</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-[#2E5E3E]/10">
+                <table className="w-full min-w-[560px] text-left text-sm">
+                  <thead className="border-b border-[#2E5E3E]/10 bg-[#F7F5EF] text-[11px] uppercase tracking-wide text-[#8B5E3C]">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Intake</th>
+                      <th className="px-4 py-3 font-semibold">Crop</th>
+                      <th className="px-4 py-3 font-semibold">Origin</th>
+                      <th className="px-4 py-3 font-semibold">Risk</th>
+                      <th className="px-4 py-3 font-semibold">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#2E5E3E]/8">
+                    {harvestIntakeFeed.map((row) => {
+                      const m = matches[row.id];
+                      if (!m) return null;
+                      const low = m.spoilageRisk.level === "LOW";
+                      const med = m.spoilageRisk.level === "MEDIUM";
+                      const rowBg = low
+                        ? "bg-[#2E5E3E]/06"
+                        : med
+                          ? "bg-[#F2C14E]/15"
+                          : "bg-red-50";
+                      return (
+                        <tr key={row.id} className={rowBg}>
+                          <td className="px-4 py-3 font-mono text-xs text-[#5E6B60]">{row.id}</td>
+                          <td className="px-4 py-3 capitalize text-[#2E5E3E]">{row.crop_type}</td>
+                          <td className="px-4 py-3 text-[#5E6B60]">{row.location}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${riskBadge(m.spoilageRisk.level)}`}
+                            >
+                              {m.spoilageRisk.level}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-[#2E5E3E]">{m.spoilageRisk.score}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
         </div>
-      </section>
-    </main>
+      </div>
+    </div>
   );
 }
